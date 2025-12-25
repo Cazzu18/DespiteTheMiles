@@ -1,7 +1,7 @@
 import { useMemo, useRef, useEffect, useState} from "react";
 import {pages, pageAtom} from "./UI";
 import{ MathUtils, BoxGeometry, MeshStandardMaterial, SkinnedMesh, Uint16BufferAttribute, Vector3, Float32BufferAttribute, Bone, Skeleton, Color, SkeletonHelper, SRGBColorSpace} from "three";
-import {useHelper, useTexture} from "@react-three/drei";
+import {useCursor, useHelper, useTexture} from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import { degToRad } from "three/src/math/MathUtils.js";
 import { useAtom } from "jotai";
@@ -58,6 +58,8 @@ pageGeometry.setAttribute(
 
 
 const whiteColor = new Color("white");
+const emissiveColor = new Color("#ff5555");
+
 //1 material per face(total of 6 face because box has 6 faces)
 const pageMaterials = [
     new MeshStandardMaterial({
@@ -134,6 +136,8 @@ const Page = ({number, front, back, page, opened, bookClosed, ...props}) => {
                     : {
                         roughness: 0.1,//value near one for matte effect
                     }),
+                emissive: emissiveColor,
+                emissiveIntensity: 0,
             }),
 
             new MeshStandardMaterial({
@@ -147,6 +151,8 @@ const Page = ({number, front, back, page, opened, bookClosed, ...props}) => {
                     : {
                         roughness: 0.1,//value near one for matte effect
                     }),
+                emissive: emissiveColor,
+                emissiveIntensity: 0,
             }),
         ];
         const mesh = new SkinnedMesh(pageGeometry, materials);
@@ -166,6 +172,16 @@ const Page = ({number, front, back, page, opened, bookClosed, ...props}) => {
         if(!skinnedMeshRef.current){
             return;
         }
+
+        const emissiveIntensity = highlighted ? 0.22 : 0;
+
+        //front and back materials
+        skinnedMeshRef.current.material[4].emissiveIntensity = 
+            skinnedMeshRef.current.material[5].emissiveIntensity = MathUtils.lerp(
+                skinnedMeshRef.current.material[4].emissiveIntensity,
+                emissiveIntensity,
+                0.1
+            );
 
         //if values of opened and lastOpened are different, then we just changed the value
         if(lastOpened.current !== opened){
@@ -217,8 +233,27 @@ const Page = ({number, front, back, page, opened, bookClosed, ...props}) => {
         }
     })
 
+    const [_, setPage] = useAtom(pageAtom);
+    const [highlighted, setHighlighted] = useState(false);
+    useCursor(highlighted);//normal to pointer
+
     return (
-        <group {...props} ref={group}>
+        <group {...props} ref={group}
+        onPointerEnter={(e) => {
+            e.stopPropagation();
+            setHighlighted(true);
+        }}
+        onPointerLeave={(e) => {
+            e.stopPropagation();
+            setHighlighted(false);
+        }}
+        onClick={(e) => {
+            e.stopPropagation();
+            setPage(opened ? number : number + 1);
+            setHighlighted(false);
+        }}
+        
+        >
             <primitive object={manualSkinnedMesh} ref={skinnedMeshRef} position-z ={-number * PAGE_DEPTH + page * PAGE_DEPTH}
             />
         </group>

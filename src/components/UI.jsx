@@ -1,22 +1,23 @@
 import { atom, useAtom } from "jotai";
+import { useEffect, useRef } from "react";
 
 const pictures = [
-  "DSC00680",
-  "DSC00933",
-  "DSC00966",
-  "DSC00983",
-  "DSC01011",
-  "DSC01040",
-  "DSC01064",
-  "DSC01071",
-  "DSC01103",
-  "DSC01145",
-  "DSC01420",
-  "DSC01461",
-  "DSC01489",
-  "DSC02031",
-  "DSC02064",
-  "DSC02069",
+  "eddoksmomtrin",
+  "momeddest",
+  "noblegrad",
+  "desteddoks",
+  "babyeddest",
+  "mombabyed",
+  "edmundandtrin",
+  "doks",
+  "momcanada",
+  "momedtrin",
+  "edmundsanta",
+  "destanded",
+  "momanddoks",
+  "edsilly",
+  "momkissed",
+  "trinkissed",
 ];
 
 export const pageAtom = atom(0);
@@ -40,6 +41,39 @@ pages.push({
 
 export const UI = () => {
   const [page, setPage] = useAtom(pageAtom);
+  const bgAudioRef = useRef(null);
+  const bgStartedRef = useRef(false);
+
+  useEffect(() => {
+    const audio = new Audio("/audios/TheChristmasSong.mp3");
+    audio.loop = true;
+    audio.volume = 0.04;
+    bgAudioRef.current = audio;
+
+    return () => {
+        audio.pause();
+        audio.src ="";
+        bgAudioRef.current = null;
+        bgStartedRef.current = false;
+    };
+  }, []);
+
+  const startBgAudio = () => {
+    if(bgStartedRef.currenty) return;
+    const audio = bgAudioRef.current;
+
+    if(!audio) return;//couldnt find it(maybe should throw error)
+
+    bgStartedRef.current = true;
+    audio.play().catch(() => {
+        bgStartedRef.current = false;
+    });
+  };
+
+  useEffect(() => {
+    const audio = new Audio("/audios/page-flip-01a.mp3");
+    audio.play();
+  }, [page]); //play audio when page changes
 
   return (
     <>
@@ -60,7 +94,7 @@ export const UI = () => {
                     ? "bg-white/90 text-black"
                     : "bg-black/30 text-white"
                 }`}
-                onClick={() => setPage(index)}
+                onClick={() => {setPage(index); startBgAudio();}}
               >
                 {index === 0 ? "Cover" : `Page ${index}`}
               </button>
@@ -71,7 +105,7 @@ export const UI = () => {
                   ? "bg-white/90 text-black"
                   : "bg-black/30 text-white"
               }`}
-              onClick={() => setPage(pages.length)}
+              onClick={() =>{ startBgAudio(); setPage(pages.length);}}
             >
               Back Cover
             </button>
