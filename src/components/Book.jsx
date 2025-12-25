@@ -1,10 +1,18 @@
 import { useMemo, useRef, useEffect, useState} from "react";
 import {pages, pageAtom} from "./UI";
-import{ BoxGeometry, MeshStandardMaterial, SkinnedMesh, Uint16BufferAttribute, Vector3, Float32BufferAttribute, Bone, Skeleton, Color, SkeletonHelper, SRGBColorSpace} from "three";
+import{ MathUtils, BoxGeometry, MeshStandardMaterial, SkinnedMesh, Uint16BufferAttribute, Vector3, Float32BufferAttribute, Bone, Skeleton, Color, SkeletonHelper, SRGBColorSpace} from "three";
 import {useHelper, useTexture} from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import { degToRad } from "three/src/math/MathUtils.js";
 import { useAtom } from "jotai";
+import { easing } from "maath";
+
+//const lerpFactor = 0.05;//controls the speed of interpolation(linear)
+const easingFactor = 0.5;//controls the speed of easing
+const easingFactorFold = 0.3;//controls the speed of easing
+const insideCurveStrength = 0.17; //controls the strength of the curve
+const outsideCurveStrenth = 0.05;//controls strength of curve
+const turningCurveStrength = 0.09; //controls strength of curve
 
 const PAGE_WIDTH = 1.28;
 const PAGE_HEIGHT = 1.71; //4:3 aspect ratio
@@ -75,7 +83,7 @@ pages.forEach((page) => {
 });
 
 //lower the scale on the mesh the smaller the object
-const Page = ({number, front, back, page, ...props}) => {
+const Page = ({number, front, back, page, opened, bookClosed, ...props}) => {
 
     const [picture, picture2, pcitureRoughness] = useTexture([
         `/textures/${front}.jpg`,
@@ -88,6 +96,8 @@ const Page = ({number, front, back, page, ...props}) => {
     ]);
     picture.colorSpace = picture2.colorSpace = SRGBColorSpace;
     const group = useRef();
+    const turnedAt =useRef(0);
+    const lastOpened = useRef(opened);//check wether opened or not at last frame
 
     const skinnedMeshRef = useRef();
 
@@ -152,18 +162,64 @@ const Page = ({number, front, back, page, ...props}) => {
 
     //useHelper(skinnedMeshRef, SkeletonHelper, "red");
 
-    useFrame(() => {
+    useFrame((_, delta) => {
         if(!skinnedMeshRef.current){
             return;
         }
 
+        //if values of opened and lastOpened are different, then we just changed the value
+        if(lastOpened.current !== opened){
+            turnedAt.current = +new Date(); //+ for timestamp value
+            lastOpened.current = opened;
+        }
+
+        let turningTime = Math.min(400, new Date() - turnedAt.current) / 400;//value between 0 and 1
+        turningTime = Math.sin(turningTime * Math.PI); //smoothing
+
+        let targetRotation = opened ? -Math.PI / 2 : Math.PI / 2;
+        if(!bookClosed){
+            targetRotation += degToRad(number * 0.8);
+        }
+        
         const bones = skinnedMeshRef.current.skeleton.bones;
+
+        for(let i = 0; i < bones.length; i++){
+            const target = i === 0 ? group.current : bones[i];
+            
+            const insideCurveIntensity = i < 8 ? Math.sin(i * 0.2 + 0.25) : 0;
+            const outsideCurveIntensity = i >= 8 ? Math.cos(i * 0.3 + 0.009) : 0;
+            const turningIntensity = Math.sin(i * Math.PI * (1/ bones.length)) * turningTime;
+
+            let rotationAngle = (insideCurveStrength * insideCurveIntensity * targetRotation) -
+            ( outsideCurveStrenth * outsideCurveIntensity * targetRotation) +
+            (turningCurveStrength * turningIntensity * targetRotation);
+
+            let foldRotationAngle = degToRad(Math.sign(targetRotation) * 2);// either 1 or -1 * 2
+
+            if(bookClosed){
+                if(i===0){
+                    rotationAngle = targetRotation;
+                    foldRotationAngle = 0;
+                } else {
+                    rotationAngle = 0;
+                }
+            }
+            easing.dampAngle(target.rotation, "y", rotationAngle, easingFactor, delta);
+
+            const foldIntensity = i > 8 ? Math.sin(i * Math.PI * (1/bones.length) - 0.5) * turningTime : 0;
+            easing.dampAngle(
+                target.rotation,
+                "x",
+                foldRotationAngle * foldIntensity,
+                easingFactorFold,
+                delta
+            )
+        }
     })
 
     return (
         <group {...props} ref={group}>
-            <primitive object={manualSkinnedMesh} ref={skinnedMeshRef} 
-                position-z ={-number * PAGE_DEPTH + page * PAGE_DEPTH}
+            <primitive object={manualSkinnedMesh} ref={skinnedMeshRef} position-z ={-number * PAGE_DEPTH + page * PAGE_DEPTH}
             />
         </group>
     )
@@ -172,16 +228,50 @@ const Page = ({number, front, back, page, ...props}) => {
 ///props to position from the parent
 export const Book = ({...props}) => {
     const [page] = useAtom(pageAtom);
+    const [delayedPage, setDelayedPage] = useState(page);
+
+    useEffect(() => {
+        let timeout;
+        const goToPage = () => {
+            setDelayedPage((delayedPage) => {
+                if (page === delayedPage){
+                    return delayedPage;
+                } else {
+                    timeout = setTimeout(
+                        () => {
+                            goToPage();
+                        },
+                        Math.abs(page - delayedPage) > 2 ? 50 :  150
+                    );
+
+                    if(page > delayedPage){
+                        return delayedPage + 1;
+                    }
+
+                    if(page < delayedPage){
+                        return delayedPage - 1;
+                    }
+                }
+            });
+        };
+        goToPage();
+        return () => {
+            clearTimeout(timeout);
+
+        };
+    }, [page]); //only take effect if the values in the list change
     return(
         
-        <group {...props}>
+        <group {...props} rotation-y={-Math.PI / 2}>
             {[...pages].map((pageData, index) => (
                 //only render the first page
                 <Page 
                     //so that page position is different and we can see the spaces
                     key={index}
-                    page = {page}
+                    page = {delayedPage}
                     number ={index} 
+                    opened={delayedPage > index}
+                    bookClosed={delayedPage === 0 || delayedPage === pages.length}
                     {...pageData} 
                 />
             ))}
